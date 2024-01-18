@@ -23,7 +23,6 @@ def auth_required(f):
                 "name": user.name,
                 "email": user.email,
                 "role": user.role,
-                "password": user.password,
                 "degree": user.degree
             }
         except Exception as e:
@@ -47,7 +46,6 @@ def auth_optional(f):
                 "name": user.name,
                 "email": user.email,
                 "role": user.role,
-                "password": user.password,
                 "degree": user.degree
             }
         except:
