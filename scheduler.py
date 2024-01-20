@@ -25,9 +25,7 @@ def check_expires():
                 assignment.status = "DEADLINED"
                 db.session.commit()
 
-        print("Test Scheduler")
-
 
 def init_scheduler():
-    scheduler.add_job(func=check_expires, trigger="interval", id="check expires job", seconds=5)
+    scheduler.add_job(func=check_expires, trigger="interval", id="check expires job", hours=2)
     scheduler.start()

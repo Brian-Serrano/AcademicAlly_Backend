@@ -13,7 +13,7 @@ def auth_required(f):
         token = request.headers["Authorization"]
 
         if not token:
-            return jsonify({"error": "A valid token is missing!"}), 401
+            return jsonify({"error": "A valid token is missing!", "type": "error"}), 401
         
         try:
             data = jwt.decode(token, api.config['SECRET_KEY'], algorithms=['HS256'])
@@ -23,10 +23,12 @@ def auth_required(f):
                 "name": user.name,
                 "email": user.email,
                 "role": user.role,
-                "degree": user.degree
+                "degree": user.degree,
+                "primaryLearning": user.primary_learning_pattern,
+                "secondaryLearning": user.secondary_learning_pattern
             }
         except Exception as e:
-            return jsonify({"error": f"Invalid token! {e}"}), 401
+            return jsonify({"error": f"Invalid token! {e}", "type": "error"}), 401
 
         return f(current_user, *args, **kwargs)
     
@@ -46,7 +48,9 @@ def auth_optional(f):
                 "name": user.name,
                 "email": user.email,
                 "role": user.role,
-                "degree": user.degree
+                "degree": user.degree,
+                "primaryLearning": user.primary_learning_pattern,
+                "secondaryLearning": user.secondary_learning_pattern
             }
         except:
             current_user = None

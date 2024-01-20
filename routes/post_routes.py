@@ -2,16 +2,14 @@ import os
 from datetime import datetime, timedelta
 
 import bcrypt
-import jwt
 from flask import request, jsonify, Blueprint
 from werkzeug.utils import secure_filename
 
 from config import api, UPLOAD_FOLDER, db, SALT
-from db import User, Message, Assignment, Session, CourseSkill
+from db import User, Message, Assignment, Session
 from routes.auth_wrapper import auth_required
 from utils import allowed_file, string_to_double_list, compute_achievement_progress, list_to_string, \
-    check_completed_achievements, validate_info, validate_password, update_course_eligibility, validate_login, \
-    validate_signup, update_assessment_achievement
+    check_completed_achievements, validate_info, validate_password, update_course_eligibility
 
 
 post_bp = Blueprint("post_routes", __name__)
@@ -46,25 +44,29 @@ def reject_student(current_user):
     try:
         data = request.get_json()
         message = Message.query.filter_by(message_id=data["messageId"]).first()
-        student = User.query.filter_by(id=data["studentId"]).first()
-        tutor = User.query.filter_by(id=data["tutorId"]).first()
-        message.status = "REJECT"
-        student.denied_requests = student.denied_requests + 1
-        tutor.requests_denied = tutor.requests_denied + 1
 
-        # Update achievement
-        current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
-        computed_progress_tutor = compute_achievement_progress(
-            float(tutor.requests_denied),
-            [1, 3, 10],
-            [4, 5, 6],
-            current_progress_tutor
-        )
-        tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+        if message.status == "WAITING":
+            student = User.query.filter_by(id=data["studentId"]).first()
+            tutor = User.query.filter_by(id=data["tutorId"]).first()
+            message.status = "REJECT"
+            student.denied_requests = student.denied_requests + 1
+            tutor.requests_denied = tutor.requests_denied + 1
 
-        db.session.commit()
-        response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
-        return jsonify({"data": response, "type": "success"}), 201
+            # Update achievement
+            current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
+            computed_progress_tutor = compute_achievement_progress(
+                float(tutor.requests_denied),
+                [1, 3, 10],
+                [4, 5, 6],
+                current_progress_tutor
+            )
+            tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+
+            db.session.commit()
+            response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
+            return jsonify({"data": response, "type": "success"}), 201
+        else:
+            return jsonify({"error": "Message may be accepted or rejected", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -85,6 +87,7 @@ def update_info(current_user):
             user.contact_number = data["contactNumber"]
             user.summary = data["summary"]
             user.educational_background = data["educationalBackground"]
+            user.free_tutoring_time = data["freeTutoringTime"]
             db.session.commit()
         return jsonify({"data": validation, "type": "success"}), 201
     except Exception as e:
@@ -133,62 +136,41 @@ def complete_assessment(current_user):
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/login", methods=["POST"])
-def login():
-    try:
-        data = request.get_json()
-        user = User.query.filter_by(email=data["email"], role=data["role"]).first()
-        validation = validate_login(user, data["email"], data["password"])
-        if validation["isValid"]:
-            token = jwt.encode({"user_id": user.id, "exp": datetime.utcnow() + timedelta(days=7)}, api.config['SECRET_KEY'], algorithm='HS256')
-            if data["eligibility"]:
-                response = {
-                    "achievements": update_course_eligibility(data["courseId"], user.id, data["rating"], data["score"]),
-                    "token": token,
-                    "type": "success"
-                }
-                return jsonify(response), 201
-            else:
-                return jsonify({"token": token, "type": "noAssessment"}), 201
-        else:
-            validation["type"] = "validationError"
-            return jsonify(validation), 250
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
 @post_bp.route("/complete_assignment", methods=["POST"])
 @auth_required
 def complete_assignment(current_user):
     try:
         data = request.get_json()
         assignment = Assignment.query.filter_by(assignment_id=data["assignmentId"]).first()
-        student = User.query.filter_by(id=current_user["id"]).first()
-        assignment.student_score = data["score"]
-        assignment.status = "COMPLETED"
-        student.assignments_taken = student.assignments_taken + 1
-        student.student_assignment_points = student.student_assignment_points + (data["score"] * 0.1)
-        student.student_points = student.student_points + (data["score"] * 0.1)
 
-        # Update achievement
-        current_progress_student = string_to_double_list(student.badge_progress_as_student)
-        computed_progress_student = compute_achievement_progress(
-            student.student_points,
-            [10, 25, 50, 100, 200],
-            [7, 8, 9, 10, 11],
-            compute_achievement_progress(
-                float(student.assignments_taken),
-                [1, 5, 10],
-                [19, 20, 21],
-                current_progress_student
+        if assignment.status == "UNCOMPLETED":
+            student = User.query.filter_by(id=current_user["id"]).first()
+            assignment.student_score = data["score"]
+            assignment.status = "COMPLETED"
+            student.assignments_taken = student.assignments_taken + 1
+            student.student_assignment_points = student.student_assignment_points + (data["score"] * 0.1)
+            student.student_points = student.student_points + (data["score"] * 0.1)
+
+            # Update achievement
+            current_progress_student = string_to_double_list(student.badge_progress_as_student)
+            computed_progress_student = compute_achievement_progress(
+                student.student_points,
+                [10, 25, 50, 100, 200],
+                [7, 8, 9, 10, 11],
+                compute_achievement_progress(
+                    float(student.assignments_taken),
+                    [1, 5, 10],
+                    [19, 20, 21],
+                    current_progress_student
+                )
             )
-        )
-        student.badge_progress_as_student = list_to_string(computed_progress_student)
+            student.badge_progress_as_student = list_to_string(computed_progress_student)
 
-        db.session.commit()
-        response = check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")
-        return jsonify({"data": response, "type": "success"}), 201
+            db.session.commit()
+            response = check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")
+            return jsonify({"data": response, "type": "success"}), 201
+        else:
+            return jsonify({"error": "Assignment may be completed or deadlined", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -200,82 +182,86 @@ def complete_session_and_create_assignment(current_user):
     try:
         data = request.get_json()
         session = Session.query.filter_by(session_id=data["sessionId"]).first()
-        student = User.query.filter_by(id=data["studentId"]).first()
-        tutor = User.query.filter_by(id=data["tutorId"]).first()
-        assignment = Assignment(
-            student_id=data["studentId"],
-            tutor_id=data["tutorId"],
-            course_id=data["courseId"],
-            module_id=data["moduleId"],
-            data=data["data"],
-            type=data["type"],
-            dead_line=datetime.strptime(data["deadLine"], "%d/%m/%Y %I:%M %p")
-        )
-        db.session.add(assignment)
-        session.status = "COMPLETED"
-        student.sessions_completed_as_student = student.sessions_completed_as_student + 1
-        student.student_session_points = student.student_session_points + 0.5
-        student.student_points = student.student_points + 0.5
-        tutor.sessions_completed_as_tutor = tutor.sessions_completed_as_tutor + 1
-        tutor.tutor_session_points = tutor.tutor_session_points + 0.5
-        tutor.tutor_points = tutor.tutor_points + 0.5
-        tutor.assignments_created = tutor.assignments_created + 1
-        tutor.tutor_assignment_points = tutor.tutor_assignment_points + 0.5
-        tutor.tutor_points = tutor.tutor_points + 0.5
 
-        if data["rate"] > 0:
-            session.tutor_rate = True
-            tutor.students_rated = tutor.students_rated + 1
-            student.total_rating_as_student = student.total_rating_as_student + (data["rate"] / 5.0)
-            student.number_of_rates_as_student = student.number_of_rates_as_student + 1
-
-        # Update achievement
-        current_progress_student = string_to_double_list(student.badge_progress_as_student)
-        computed_progress_student = compute_achievement_progress(
-            student.student_points,
-            [10, 25, 50, 100, 200],
-            [7, 8, 9, 10, 11],
-            compute_achievement_progress(
-                float(student.sessions_completed_as_student),
-                [1, 5, 10],
-                [12, 13, 14],
-                compute_achievement_progress(
-                    float(student.number_of_rates_as_student),
-                    [1, 5, 10],
-                    [25, 26, 27],
-                    current_progress_student
-                ) if data["rate"] > 0 else current_progress_student
+        if session.status == "UPCOMING":
+            student = User.query.filter_by(id=data["studentId"]).first()
+            tutor = User.query.filter_by(id=data["tutorId"]).first()
+            assignment = Assignment(
+                student_id=data["studentId"],
+                tutor_id=data["tutorId"],
+                course_id=data["courseId"],
+                module_id=data["moduleId"],
+                data=data["data"],
+                type=data["type"],
+                dead_line=datetime.strptime(data["deadLine"], "%d/%m/%Y %I:%M %p")
             )
-        )
-        student.badge_progress_as_student = list_to_string(computed_progress_student)
+            db.session.add(assignment)
+            session.status = "COMPLETED"
+            student.sessions_completed_as_student = student.sessions_completed_as_student + 1
+            student.student_session_points = student.student_session_points + 0.5
+            student.student_points = student.student_points + 0.5
+            tutor.sessions_completed_as_tutor = tutor.sessions_completed_as_tutor + 1
+            tutor.tutor_session_points = tutor.tutor_session_points + 0.5
+            tutor.tutor_points = tutor.tutor_points + 0.5
+            tutor.assignments_created = tutor.assignments_created + 1
+            tutor.tutor_assignment_points = tutor.tutor_assignment_points + 0.5
+            tutor.tutor_points = tutor.tutor_points + 0.5
 
-        current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
-        computed_progress_tutor = compute_achievement_progress(
-            tutor.tutor_points,
-            [10, 25, 50, 100, 200],
-            [7, 8, 9, 10, 11],
-            compute_achievement_progress(
-                float(tutor.sessions_completed_as_tutor),
-                [1, 5, 10],
-                [12, 13, 14],
+            if data["rate"] > 0:
+                session.tutor_rate = True
+                tutor.students_rated = tutor.students_rated + 1
+                student.total_rating_as_student = student.total_rating_as_student + (data["rate"] / 5.0)
+                student.number_of_rates_as_student = student.number_of_rates_as_student + 1
+
+            # Update achievement
+            current_progress_student = string_to_double_list(student.badge_progress_as_student)
+            computed_progress_student = compute_achievement_progress(
+                student.student_points,
+                [10, 25, 50, 100, 200],
+                [7, 8, 9, 10, 11],
                 compute_achievement_progress(
-                    float(tutor.assignments_created),
+                    float(student.sessions_completed_as_student),
                     [1, 5, 10],
-                    [19, 20, 21],
+                    [12, 13, 14],
                     compute_achievement_progress(
-                        float(tutor.students_rated),
+                        float(student.number_of_rates_as_student),
                         [1, 5, 10],
-                        [22, 23, 24],
-                        current_progress_tutor
-                    ) if data["rate"] > 0 else current_progress_tutor
+                        [25, 26, 27],
+                        current_progress_student
+                    ) if data["rate"] > 0 else current_progress_student
                 )
             )
-        )
-        tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+            student.badge_progress_as_student = list_to_string(computed_progress_student)
 
-        db.session.commit()
-        response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
-        return jsonify({"data": response, "type": "success"}), 201
+            current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
+            computed_progress_tutor = compute_achievement_progress(
+                tutor.tutor_points,
+                [10, 25, 50, 100, 200],
+                [7, 8, 9, 10, 11],
+                compute_achievement_progress(
+                    float(tutor.sessions_completed_as_tutor),
+                    [1, 5, 10],
+                    [12, 13, 14],
+                    compute_achievement_progress(
+                        float(tutor.assignments_created),
+                        [1, 5, 10],
+                        [19, 20, 21],
+                        compute_achievement_progress(
+                            float(tutor.students_rated),
+                            [1, 5, 10],
+                            [22, 23, 24],
+                            current_progress_tutor
+                        ) if data["rate"] > 0 else current_progress_tutor
+                    )
+                )
+            )
+            tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+
+            db.session.commit()
+            response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
+            return jsonify({"data": response, "type": "success"}), 201
+        else:
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -286,62 +272,66 @@ def complete_session_and_create_assignment(current_user):
 def create_session(current_user):
     try:
         data = request.get_json()
-        start_time = datetime.strptime(data["startTime"], "%d/%m/%Y %I:%M %p")
-        end_time = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p")
         message = Message.query.filter_by(message_id=data["messageId"]).first()
-        student = User.query.filter_by(id=data["studentId"]).first()
-        tutor = User.query.filter_by(id=data["tutorId"]).first()
-        session = Session(
-            course_id=data["courseId"],
-            tutor_id=data["tutorId"],
-            student_id=data["studentId"],
-            module_id=data["moduleId"],
-            start_time=start_time,
-            end_time=end_time,
-            location=data["location"],
-            expire_date=end_time + timedelta(days=7)
-        )
-        db.session.add(session)
-        message.status = "ACCEPT"
-        student.accepted_requests = student.accepted_requests + 1
-        student.student_request_points = student.student_request_points + 0.2
-        student.student_points = student.student_points + 0.2
-        tutor.requests_accepted = tutor.requests_accepted + 1
-        tutor.tutor_request_points = tutor.tutor_request_points + 0.2
-        tutor.tutor_points = tutor.tutor_points + 0.2
 
-        # Update achievement
-        current_progress_student = string_to_double_list(student.badge_progress_as_student)
-        computed_progress_student = compute_achievement_progress(
-            student.student_points,
-            [10, 25, 50, 100, 200],
-            [7, 8, 9, 10, 11],
-            compute_achievement_progress(
-                float(student.accepted_requests),
-                [1, 3, 10],
-                [4, 5, 6],
-                current_progress_student
+        if message.status == "WAITING":
+            start_time = datetime.strptime(data["startTime"], "%d/%m/%Y %I:%M %p")
+            end_time = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p")
+            student = User.query.filter_by(id=data["studentId"]).first()
+            tutor = User.query.filter_by(id=data["tutorId"]).first()
+            session = Session(
+                course_id=data["courseId"],
+                tutor_id=data["tutorId"],
+                student_id=data["studentId"],
+                module_id=data["moduleId"],
+                start_time=start_time,
+                end_time=end_time,
+                location=data["location"],
+                expire_date=end_time + timedelta(days=7)
             )
-        )
-        student.badge_progress_as_student = list_to_string(computed_progress_student)
+            db.session.add(session)
+            message.status = "ACCEPT"
+            student.accepted_requests = student.accepted_requests + 1
+            student.student_request_points = student.student_request_points + 0.2
+            student.student_points = student.student_points + 0.2
+            tutor.requests_accepted = tutor.requests_accepted + 1
+            tutor.tutor_request_points = tutor.tutor_request_points + 0.2
+            tutor.tutor_points = tutor.tutor_points + 0.2
 
-        current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
-        computed_progress_tutor = compute_achievement_progress(
-            tutor.tutor_points,
-            [10, 25, 50, 100, 200],
-            [7, 8, 9, 10, 11],
-            compute_achievement_progress(
-                float(tutor.requests_accepted),
-                [1, 5, 10, 20],
-                [0, 1, 2, 3],
-                current_progress_tutor
+            # Update achievement
+            current_progress_student = string_to_double_list(student.badge_progress_as_student)
+            computed_progress_student = compute_achievement_progress(
+                student.student_points,
+                [10, 25, 50, 100, 200],
+                [7, 8, 9, 10, 11],
+                compute_achievement_progress(
+                    float(student.accepted_requests),
+                    [1, 3, 10],
+                    [4, 5, 6],
+                    current_progress_student
+                )
             )
-        )
-        tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+            student.badge_progress_as_student = list_to_string(computed_progress_student)
 
-        db.session.commit()
-        response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
-        return jsonify({"data": response, "type": "success"}), 201
+            current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
+            computed_progress_tutor = compute_achievement_progress(
+                tutor.tutor_points,
+                [10, 25, 50, 100, 200],
+                [7, 8, 9, 10, 11],
+                compute_achievement_progress(
+                    float(tutor.requests_accepted),
+                    [1, 5, 10, 20],
+                    [0, 1, 2, 3],
+                    current_progress_tutor
+                )
+            )
+            tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+
+            db.session.commit()
+            response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
+            return jsonify({"data": response, "type": "success"}), 201
+        else:
+            return jsonify({"error": "Message may be accepted or rejected", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -353,14 +343,18 @@ def update_session(current_user):
     try:
         data = request.get_json()
         session = Session.query.filter_by(session_id=data["sessionId"]).first()
-        session.start_time = datetime.strptime(data["startTime"], "%d/%m/%Y %I:%M %p")
-        session.end_time = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p")
-        session.location = data["location"]
-        session.expire_date = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p") + timedelta(days=7)
-        session.student_viewed = False
 
-        db.session.commit()
-        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
+        if session.status == "UPCOMING":
+            session.start_time = datetime.strptime(data["startTime"], "%d/%m/%Y %I:%M %p")
+            session.end_time = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p")
+            session.location = data["location"]
+            session.expire_date = datetime.strptime(data["endTime"], "%d/%m/%Y %I:%M %p") + timedelta(days=7)
+            session.student_viewed = False
+
+            db.session.commit()
+            return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
+        else:
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -419,49 +413,6 @@ def send_tutor_request(current_user):
             return jsonify({"achievements": check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT"), "type": "success"}), 201
         else:
             return jsonify({"message": "Tutor can only be message once.", "type": "duplicate"}), 401
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/signup", methods=["POST"])
-def signup():
-    try:
-        data = request.get_json()
-        validation = validate_signup(data["name"], data["email"], data["password"], data["confirmPassword"])
-        if validation["isValid"]:
-            user = User(
-                name=data["name"],
-                role=data["role"],
-                email=data["email"],
-                password=bcrypt.hashpw(data["password"].encode(), SALT).decode()
-            )
-            db.session.add(user)
-            user_id = User.query.filter_by(name=data["name"], email=data["email"], role=data["role"]).first().id
-
-            token = jwt.encode({"user_id": user_id, "exp": datetime.utcnow() + timedelta(days=7)}, api.config['SECRET_KEY'], algorithm='HS256')
-
-            if data["eligibility"]:
-                course_skill = CourseSkill(
-                    course_id=data["courseId"],
-                    user_id=user_id,
-                    role=data["eligibility"],
-                    assessment_taken=1,
-                    assessment_rating=data["rating"]
-                )
-                db.session.add(course_skill)
-                response = {
-                    "achievements": update_assessment_achievement(data["score"] / data["items"] >= data["evaluator"], data["score"], user_id),
-                    "token": token,
-                    "type": "success"
-                }
-                return jsonify(response), 201
-            else:
-                db.session.commit()
-                return jsonify({"token": token, "type": "noAssessment"}), 201
-        else:
-            validation["type"] = "validationError"
-            return jsonify(validation), 250
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

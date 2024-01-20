@@ -6,8 +6,9 @@ from itertools import groupby
 
 import bcrypt
 from PIL import Image
+from itsdangerous import URLSafeTimedSerializer
 
-from config import ALLOWED_EXTENSIONS, EMAIL_REGEX, PASSWORD_REGEX
+from config import ALLOWED_EXTENSIONS, EMAIL_REGEX, PASSWORD_REGEX, api, SALT
 from db import Achievement, User, CourseSkill, db, Course, Assignment, Session, Message
 
 
@@ -134,7 +135,8 @@ def info_response(user):
         "contactNumber": user.contact_number,
         "summary": user.summary,
         "educationalBackground": user.educational_background,
-        "image": get_response_image(user.image_path)
+        "image": get_response_image(user.image_path),
+        "freeTutoringTime": user.free_tutoring_time
     }
 
 
@@ -151,6 +153,8 @@ def validate_info(data, current_name):
         return {"isValid": False, "message": "Summary should be 30-200 characters length."}
     if not 30 <= len(data["educationalBackground"]) <= 200:
         return {"isValid": False, "message": "Educational Background should be 30-200 characters length."}
+    if not 15 <= len(data["freeTutoringTime"]) <= 100:
+        return {"isValid": False, "message": "Free tutoring time should be 15-100 characters length."}
     if not 15 <= int(data["age"]) <= 50:
         return {"isValid": False, "message": "Age should range from 15 to 50"}
     if not re.search("BSCS|HRS|STEM|IT|ACT|HRM|ABM", data["degree"]):
@@ -421,3 +425,18 @@ def badge_paths(role):
             "badges/star_rating.png",
             "badges/customer_review.png"
         ]
+
+
+def generate_token(email):
+    serializer = URLSafeTimedSerializer(api.config['SECRET_KEY'])
+    return serializer.dumps(email, salt=SALT)
+
+
+def validate_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(api.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(token, salt=SALT, max_age=expiration)
+        return email
+    except Exception as e:
+        print(f"Token validation error: {e}")
+        return None

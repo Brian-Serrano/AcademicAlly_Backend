@@ -17,6 +17,7 @@ class User(db.Model):
     contact_number = db.Column(db.String, nullable=False, default="NA")
     summary = db.Column(db.String, nullable=False, default="This user has no summary provided")
     educational_background = db.Column(db.String, nullable=False, default="This user has no educational background provided")
+    free_tutoring_time = db.Column(db.String, nullable=False, default="Always available")
 
     student_points = db.Column(db.Double, nullable=False, default=0.0)
     student_assessment_points = db.Column(db.Double, nullable=False, default=0.0)
@@ -50,8 +51,8 @@ class User(db.Model):
     total_rating_as_tutor = db.Column(db.Double, nullable=False, default=0.0)
     students_rated = db.Column(db.Integer, nullable=False, default=0)
 
-    primary_learning_pattern = db.Column(db.String, nullable=False, server_default="NA")
-    secondary_learning_pattern = db.Column(db.String, nullable=False, server_default="NA")
+    primary_learning_pattern = db.Column(db.String, nullable=False, default="NA")
+    secondary_learning_pattern = db.Column(db.String, nullable=False, default="NA")
 
 
 class Message(db.Model):

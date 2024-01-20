@@ -21,24 +21,28 @@ def get_session(current_user):
     try:
         session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
 
-        if current_user["role"] == "STUDENT":
-            session.student_viewed = True
-            db.session.commit()
+        if session.status == "UPCOMING":
 
-        course = Course.query.filter_by(course_id=session.course_id).first()
-        response = {
-            "sessionId": session.session_id,
-            "courseName": course.course_name,
-            "tutorId": session.tutor_id,
-            "tutorName": User.query.filter_by(id=session.tutor_id).first().name,
-            "studentId": session.student_id,
-            "studentName": User.query.filter_by(id=session.student_id).first().name,
-            "moduleName": string_to_list(course.modules)[session.module_id],
-            "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
-            "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
-            "location": session.location
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+            if current_user["role"] == "STUDENT":
+                session.student_viewed = True
+                db.session.commit()
+
+            course = Course.query.filter_by(course_id=session.course_id).first()
+            response = {
+                "sessionId": session.session_id,
+                "courseName": course.course_name,
+                "tutorId": session.tutor_id,
+                "tutorName": User.query.filter_by(id=session.tutor_id).first().name,
+                "studentId": session.student_id,
+                "studentName": User.query.filter_by(id=session.student_id).first().name,
+                "moduleName": string_to_list(course.modules)[session.module_id],
+                "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
+                "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
+                "location": session.location
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -49,20 +53,24 @@ def get_session(current_user):
 def get_session_for_assignment(current_user):
     try:
         session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
-        course = Course.query.filter_by(course_id=session.course_id).first()
-        response = {
-            "sessionId": session.session_id,
-            "courseName": course.course_name,
-            "moduleName": string_to_list(course.modules)[session.module_id],
-            "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
-            "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
-            "location": session.location,
-            "studentId": session.student_id,
-            "tutorId": session.tutor_id,
-            "courseId": session.course_id,
-            "moduleId": session.module_id
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+
+        if session.status == "WAITING":
+            course = Course.query.filter_by(course_id=session.course_id).first()
+            response = {
+                "sessionId": session.session_id,
+                "courseName": course.course_name,
+                "moduleName": string_to_list(course.modules)[session.module_id],
+                "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
+                "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
+                "location": session.location,
+                "studentId": session.student_id,
+                "tutorId": session.tutor_id,
+                "courseId": session.course_id,
+                "moduleId": session.module_id
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
@@ -73,30 +81,36 @@ def get_student(current_user):
     try:
         message = Message.query.filter_by(message_id=request.args.get("message_id")).first()
 
-        if current_user["role"] == "TUTOR":
-            message.tutor_viewed = True
-            db.session.commit()
+        if message.status == "WAITING":
 
-        course = Course.query.filter_by(course_id=message.course_id).first()
-        user = User.query.filter_by(id=message.tutor_id if (current_user["role"] == "STUDENT") else message.student_id).first()
-        response = {
-            "messageId": message.message_id,
-            "studentId": message.student_id,
-            "tutorId": message.tutor_id,
-            "courseName": course.course_name,
-            "moduleName": string_to_list(course.modules)[message.module_id],
-            "studentMessage": message.student_message,
-            "userId": user.id,
-            "name": user.name,
-            "degree": user.degree,
-            "age": user.age,
-            "address": user.address,
-            "contactNumber": user.contact_number,
-            "summary": user.summary,
-            "educationalBackground": user.educational_background,
-            "image": get_response_image(user.image_path)
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+            if current_user["role"] == "TUTOR":
+                message.tutor_viewed = True
+                db.session.commit()
+
+            course = Course.query.filter_by(course_id=message.course_id).first()
+            user = User.query.filter_by(id=message.tutor_id if (current_user["role"] == "STUDENT") else message.student_id).first()
+            response = {
+                "messageId": message.message_id,
+                "studentId": message.student_id,
+                "tutorId": message.tutor_id,
+                "courseName": course.course_name,
+                "moduleName": string_to_list(course.modules)[message.module_id],
+                "studentMessage": message.student_message,
+                "userId": user.id,
+                "name": user.name,
+                "degree": user.degree,
+                "age": user.age,
+                "address": user.address,
+                "contactNumber": user.contact_number,
+                "summary": user.summary,
+                "educationalBackground": user.educational_background,
+                "image": get_response_image(user.image_path),
+                "primaryLearning": user.primary_learning_pattern,
+                "secondaryLearning": user.secondary_learning_pattern
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Message may be accepted or rejected", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -122,7 +136,10 @@ def get_tutor(current_user):
             "contactNumber": tutor.contact_number,
             "summary": tutor.summary,
             "educationalBackground": tutor.educational_background,
-            "image": get_response_image(tutor.image_path)
+            "image": get_response_image(tutor.image_path),
+            "freeTutoringTime": tutor.free_tutoring_time,
+            "primaryLearning": tutor.primary_learning_pattern,
+            "secondaryLearning": tutor.secondary_learning_pattern
         }
         return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
     except Exception as e:
@@ -240,18 +257,22 @@ def get_assignment(current_user):
     try:
         assignment = Assignment.query.filter_by(assignment_id=request.args.get("assignment_id")).first()
 
-        if current_user["role"] == "STUDENT":
-            assignment.student_viewed = True
-            db.session.commit()
+        if assignment.status == "UNCOMPLETED":
 
-        course = Course.query.filter_by(course_id=assignment.course_id).first()
-        response = {
-            "name": course.course_name,
-            "description": course.course_description,
-            "type": assignment.type,
-            "data": assignment.data
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+            if current_user["role"] == "STUDENT":
+                assignment.student_viewed = True
+                db.session.commit()
+
+            course = Course.query.filter_by(course_id=assignment.course_id).first()
+            response = {
+                "name": course.course_name,
+                "description": course.course_description,
+                "type": assignment.type,
+                "data": assignment.data
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Assignment may be completed or deadlined", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
@@ -285,15 +306,19 @@ def get_course_eligibility(current_user):
 def get_message(current_user):
     try:
         message = Message.query.filter_by(message_id=request.args.get("message_id")).first()
-        response = {
-            "messageId": message.message_id,
-            "courseId": message.course_id,
-            "moduleId": message.module_id,
-            "studentId": message.student_id,
-            "tutorId": message.tutor_id,
-            "studentMessage": message.student_message
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+
+        if message.status == "WAITING":
+            response = {
+                "messageId": message.message_id,
+                "courseId": message.course_id,
+                "moduleId": message.module_id,
+                "studentId": message.student_id,
+                "tutorId": message.tutor_id,
+                "studentMessage": message.student_message
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Message may be accepted or rejected", "type": "error"}), 500
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
@@ -310,8 +335,6 @@ def get_dashboard_data(current_user):
             "rateNumber": user.number_of_rates_as_student if (role == "STUDENT") else user.number_of_rates_as_tutor,
             "rating": user.total_rating_as_student if (role == "STUDENT") else user.total_rating_as_tutor,
             "courses": user_courses,
-            "primaryLearning": user.primary_learning_pattern,
-            "secondaryLearning": user.secondary_learning_pattern,
             "image": get_response_image(user.image_path)
         }
         return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
@@ -324,12 +347,16 @@ def get_dashboard_data(current_user):
 def get_session_settings(current_user):
     try:
         session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
-        response = {
-            "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
-            "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
-            "location": session.location
-        }
-        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+
+        if session.status == "UPCOMING":
+            response = {
+                "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
+                "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
+                "location": session.location
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
+        else:
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
@@ -431,7 +458,9 @@ def get_profile(current_user):
             "rating": [
                 {"rating": user.total_rating_as_student, "rateNumber": user.number_of_rates_as_student},
                 {"rating": user.total_rating_as_tutor, "rateNumber": user.number_of_rates_as_tutor}
-            ]
+            ],
+            "primaryLearning": user.primary_learning_pattern,
+            "secondaryLearning": user.secondary_learning_pattern
         }
         return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
     except Exception as e:
@@ -443,13 +472,10 @@ def get_profile(current_user):
 def get_tutors(current_user):
     try:
         user_id = current_user["id"]
-        user = User.query.filter_by(id=user_id).first()
         course_skills = CourseSkill.query.filter_by(user_id=user_id, role="STUDENT").all()
         course_skill_ids = [*map(lambda x: x.course_id, course_skills)]
         courses = Course.query.all()
         response = {
-            "primaryPattern": user.primary_learning_pattern,
-            "secondaryPattern": user.secondary_learning_pattern,
             "studentCourseIds": course_skill_ids,
             "courses": [*map(lambda x: {"id": x.course_id, "name": x.course_name}, courses)],
             "tutors": get_tutor_datas(course_skill_ids, "", user_id)
