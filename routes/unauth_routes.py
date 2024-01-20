@@ -9,7 +9,7 @@ from flask import request, jsonify, Blueprint
 
 import jwt
 
-from config import api, db, SALT, PASSWORD_REGEX
+from config import api, db, SALT, PASSWORD_REGEX, PASSWORD
 from db import User, CourseSkill
 from utils import validate_login, update_course_eligibility, validate_signup, update_assessment_achievement, \
     generate_token
@@ -88,7 +88,6 @@ def signup():
 @unauth_bp.route("/forgot_password", methods=["POST"])
 def forgot_password():
     try:
-        password = "esuh ovxk nwbx zzux"
         email_sender = "Brianserrano503@gmail.com"
         email_receiver = request.json["email"]
         msg = MIMEText(f'Please access the <a href="http://127.0.0.1:5000/template_routes/forgot_password_page/{generate_token(email_receiver)}">link</a> to change your password and recover your account.', "html")
@@ -98,7 +97,7 @@ def forgot_password():
         context = ssl.create_default_context()
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
-            smtp.login(email_sender, password)
+            smtp.login(email_sender, PASSWORD)
             smtp.sendmail(email_sender, email_receiver, msg.as_string())
             return jsonify({"message": "A mail for recovering your account has sent.", "type": "success"}), 201
     except Exception as e:
