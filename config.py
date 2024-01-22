@@ -8,15 +8,15 @@ from flask_sqlalchemy import SQLAlchemy
 
 UPLOAD_FOLDER = 'images'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
-SALT = os.environ.get("SALT").encode("utf-8")
-PASSWORD_REGEX = re.compile(os.environ.get("PASSWORD_REGEX"))
-EMAIL_REGEX = re.compile(os.environ.get("EMAIL_REGEX"))
-PASSWORD = os.environ.get("PASSWORD")
+SALT = os.getenv("SALT").encode("utf-8")
+PASSWORD_REGEX = re.compile(os.getenv("PASSWORD_REGEX"))
+EMAIL_REGEX = re.compile(os.getenv("EMAIL_REGEX"))
+PASSWORD = os.getenv("PASSWORD")
 
 api = Flask(__name__, template_folder="templates")
-api.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URI")
+api.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URI")
 api.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-api.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
+api.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
 db = SQLAlchemy(api)
 migrate = Migrate(api, db)
 scheduler = APScheduler()

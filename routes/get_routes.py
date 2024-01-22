@@ -54,7 +54,7 @@ def get_session_for_assignment(current_user):
     try:
         session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
 
-        if session.status == "WAITING":
+        if session.status == "UPCOMING":
             course = Course.query.filter_by(course_id=session.course_id).first()
             response = {
                 "sessionId": session.session_id,
@@ -489,7 +489,8 @@ def get_tutors(current_user):
 @auth_required
 def search_tutor(current_user):
     try:
-        response = get_tutor_datas([int(x) for x in request.args.get("course_filter").split(',')], request.args.get("search_query"), current_user["id"])
+        filters = request.args.get("course_filter").split(',') if request.args.get("course_filter") else []
+        response = get_tutor_datas([int(x) for x in filters], request.args.get("search_query"), current_user["id"])
         return jsonify({"data": response, "type": "success"}), 200
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

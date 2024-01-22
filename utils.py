@@ -333,7 +333,7 @@ def get_tutor_datas(course_filter, search_query, user_id):
 
 def search_tutors(tutors, search_query):
     if search_query:
-        return [*filter(lambda x: re.search(search_query, x["tutorName"], re.IGNORECASE) or any(re.search(search_query, y, re.IGNORECASE) for y in x["courses"]), tutors)]
+        return [*filter(lambda x: re.search(search_query, x["tutorName"], re.IGNORECASE) or any(re.search(search_query, y["courseName"], re.IGNORECASE) for y in x["coursesAndRatings"]), tutors)]
     else:
         return tutors
 

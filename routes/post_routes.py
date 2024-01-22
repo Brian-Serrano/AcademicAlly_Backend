@@ -452,7 +452,8 @@ def rate_user(current_user):
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
             db.session.commit()
-            return jsonify(check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")), 200
+            response = check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")
+            return jsonify({"data": response, "type": "success"}), 200
         else:
             session.tutor_rate = True
             tutor = User.query.filter_by(id=current_user["id"]).first()
