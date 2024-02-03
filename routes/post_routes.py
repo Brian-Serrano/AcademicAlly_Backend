@@ -439,7 +439,7 @@ def rate_user(current_user):
             student = User.query.filter_by(id=current_user["id"]).first()
             tutor = User.query.filter_by(id=data["otherId"]).first()
             student.tutors_rated = student.tutors_rated + 1
-            tutor.total_rating_as_tutor = tutor.total_rating_as_tutor + 1
+            tutor.total_rating_as_tutor = tutor.total_rating_as_tutor + (data["rate"] / 5.0)
             tutor.number_of_rates_as_tutor = tutor.number_of_rates_as_tutor + 1
 
             # Update achievement
@@ -469,7 +469,7 @@ def rate_user(current_user):
             tutor = User.query.filter_by(id=current_user["id"]).first()
             student = User.query.filter_by(id=data["otherId"]).first()
             tutor.students_rated = tutor.students_rated + 1
-            student.total_rating_as_student = student.total_rating_as_student + 1
+            student.total_rating_as_student = student.total_rating_as_student + (data["rate"] / 5.0)
             student.number_of_rates_as_student = student.number_of_rates_as_student + 1
 
             # Update achievement
