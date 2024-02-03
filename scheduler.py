@@ -26,6 +26,7 @@ def check_expires():
                 db.session.commit()
 
 
+# Should be removed in deployment and its corresponding imports
 def init_scheduler():
     scheduler.add_job(func=check_expires, trigger="interval", id="check expires job", hours=2)
     scheduler.start()

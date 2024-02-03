@@ -6,11 +6,12 @@ from sqlalchemy import func
 
 from config import db
 from db import Session, Course, User, Message, CourseSkill, MultipleChoiceAssessment, IdentificationAssessment, \
-    TrueOrFalseAssessment, Assignment, Achievement, LearningPatternAssessment
+    TrueOrFalseAssessment, Assignment, Achievement, LearningPatternAssessment, SupportChat
 from routes.auth_wrapper import auth_required, auth_optional
 from utils import string_to_list, get_course_rating, info_response, string_to_double_list, get_course_module, \
     map_messages, map_sessions, map_assignments, get_courses_only, get_tutor_datas, get_archive_sessions, \
-    map_archive_messages, map_archive_assignments, map_pattern_assessment, match_date, get_response_image, badge_paths
+    map_archive_messages, map_archive_assignments, map_pattern_assessment, match_date, get_response_image, badge_paths, \
+    string_to_int_list, map_multiple_choice_assignment, map_identification_assignment, map_true_or_false_assignment
 
 get_bp = Blueprint("get_routes", __name__)
 
@@ -264,11 +265,19 @@ def get_assignment(current_user):
                 db.session.commit()
 
             course = Course.query.filter_by(course_id=assignment.course_id).first()
+
+            if assignment.type == "Multiple Choice":
+                assessment = [*map(map_multiple_choice_assignment, string_to_int_list(assignment.data))]
+            elif assignment.type == "Identification":
+                assessment = [*map(map_identification_assignment, string_to_int_list(assignment.data))]
+            else:
+                assessment = [*map(map_true_or_false_assignment, string_to_int_list(assignment.data))]
+
             response = {
                 "name": course.course_name,
                 "description": course.course_description,
                 "type": assignment.type,
-                "data": assignment.data
+                "data": assessment
             }
             return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
         else:
@@ -329,7 +338,7 @@ def get_dashboard_data(current_user):
     try:
         user_id = current_user["id"]
         role = current_user["role"]
-        user_courses = [*map(get_course_rating, CourseSkill.query.filter_by(user_id=user_id, role=role).all())]
+        user_courses = [*map(get_course_rating, CourseSkill.query.filter_by(user_id=user_id, role=role).limit(3).all())]
         user = User.query.filter_by(id=user_id).first()
         response = {
             "rateNumber": user.number_of_rates_as_student if (role == "STUDENT") else user.number_of_rates_as_tutor,
@@ -450,8 +459,8 @@ def get_profile(current_user):
     try:
         other_id = request.args.get("other_id")
         user = User.query.filter_by(id=other_id).first()
-        as_student_courses = CourseSkill.query.filter_by(user_id=other_id, role="STUDENT").all()
-        as_tutor_courses = CourseSkill.query.filter_by(user_id=other_id, role="TUTOR").all()
+        as_student_courses = CourseSkill.query.filter_by(user_id=other_id, role="STUDENT").limit(3).all()
+        as_tutor_courses = CourseSkill.query.filter_by(user_id=other_id, role="TUTOR").limit(3).all()
         response = {
             "user": info_response(user),
             "courses": [[*map(get_courses_only, as_student_courses)], [*map(get_courses_only, as_tutor_courses)]],
@@ -556,5 +565,16 @@ def get_learning_pattern_assessment(current_user):
 def get_current_user(current_user):
     try:
         return jsonify({"data": current_user, "type": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
+
+
+@get_bp.route("/get_support_messages", methods=["GET"])
+@auth_required
+def get_support_messages(current_user):
+    try:
+        messages = SupportChat.query.filter((SupportChat.from_id == current_user["id"]) | (SupportChat.to_id == current_user["id"])).all()
+        response = [{"chatId": x.chat_id, "message": x.message, "fromId": x.from_id, "toId": x.to_id, "date": x.date.strftime("%d/%m/%Y %I:%M %p")} for x in messages]
+        return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

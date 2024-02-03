@@ -7,6 +7,7 @@ api.register_blueprint(post_bp, url_prefix="/post_routes")
 api.register_blueprint(unauth_bp, url_prefix="/unauth_routes")
 api.register_blueprint(template_bp, url_prefix="/template_routes")
 
+# Should be removed in deployment and its corresponding imports
 if __name__ == '__main__':
 
     with api.app_context():

@@ -6,11 +6,12 @@ from flask import request, jsonify, Blueprint
 from werkzeug.utils import secure_filename
 
 from config import api, UPLOAD_FOLDER, db, SALT
-from db import User, Message, Assignment, Session
+from db import User, Message, Assignment, Session, SupportChat
 from routes.auth_wrapper import auth_required
 from utils import allowed_file, string_to_double_list, compute_achievement_progress, list_to_string, \
-    check_completed_achievements, validate_info, validate_password, update_course_eligibility
-
+    check_completed_achievements, validate_info, validate_password, update_course_eligibility, \
+    save_pending_multiple_choice_assessment, save_pending_identification_assessment, \
+    save_pending_true_or_false_assessment
 
 post_bp = Blueprint("post_routes", __name__)
 
@@ -186,15 +187,24 @@ def complete_session_and_create_assignment(current_user):
         if session.status == "UPCOMING":
             student = User.query.filter_by(id=data["studentId"]).first()
             tutor = User.query.filter_by(id=data["tutorId"]).first()
+
+            if data["type"] == "Multiple Choice":
+                assignment_ids = [save_pending_multiple_choice_assessment(x, data["courseId"]) for x in data["data"]]
+            elif data["type"] == "Identification":
+                assignment_ids = [save_pending_identification_assessment(x, data["courseId"]) for x in data["data"]]
+            else:
+                assignment_ids = [save_pending_true_or_false_assessment(x, data["courseId"]) for x in data["data"]]
+
             assignment = Assignment(
                 student_id=data["studentId"],
                 tutor_id=data["tutorId"],
                 course_id=data["courseId"],
                 module_id=data["moduleId"],
-                data=data["data"],
+                data=list_to_string(assignment_ids),
                 type=data["type"],
                 dead_line=datetime.strptime(data["deadLine"], "%d/%m/%Y %I:%M %p")
             )
+
             db.session.add(assignment)
             session.status = "COMPLETED"
             student.sessions_completed_as_student = student.sessions_completed_as_student + 1
@@ -498,6 +508,24 @@ def complete_learning_pattern_assessment(current_user):
         learning_style = sorted(data, key=data.get, reverse=True)[:2]
         user.primary_learning_pattern = learning_style[0].title()
         user.secondary_learning_pattern = learning_style[1].title()
+        db.session.commit()
+        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
+
+
+@post_bp.route("/send_support_message", methods=["POST"])
+@auth_required
+def send_support_message(current_user):
+    try:
+        data = request.get_json()
+        support = SupportChat(
+            message=data["message"],
+            from_id=data["fromId"],
+            to_id=data["toId"]
+        )
+        db.session.add(support)
         db.session.commit()
         return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
     except Exception as e:

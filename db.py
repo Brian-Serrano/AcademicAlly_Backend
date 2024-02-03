@@ -159,3 +159,45 @@ class LearningPatternAssessment(db.Model):
     letter_b = db.Column(db.String, nullable=False)
     letter_c = db.Column(db.String, nullable=False)
     letter_d = db.Column(db.String, nullable=False)
+
+
+class PendingMultipleChoiceAssessment(db.Model):
+    assessment_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    course_id = db.Column(db.Integer, nullable=False)
+    module = db.Column(db.String, nullable=False)
+    question = db.Column(db.String, nullable=False)
+    letter_a = db.Column(db.String, nullable=False)
+    letter_b = db.Column(db.String, nullable=False)
+    letter_c = db.Column(db.String, nullable=False)
+    letter_d = db.Column(db.String, nullable=False)
+    answer = db.Column(db.String, nullable=False)
+    creator = db.Column(db.String, nullable=False)
+    status = db.Column(db.String, nullable=False, default="PENDING")
+
+
+class PendingIdentificationAssessment(db.Model):
+    assessment_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    course_id = db.Column(db.Integer, nullable=False)
+    module = db.Column(db.String, nullable=False)
+    question = db.Column(db.String, nullable=False)
+    answer = db.Column(db.String, nullable=False)
+    creator = db.Column(db.String, nullable=False)
+    status = db.Column(db.String, nullable=False, default="PENDING")
+
+
+class PendingTrueOrFalseAssessment(db.Model):
+    assessment_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    course_id = db.Column(db.Integer, nullable=False)
+    module = db.Column(db.String, nullable=False)
+    question = db.Column(db.String, nullable=False)
+    answer = db.Column(db.Boolean, nullable=False)
+    creator = db.Column(db.String, nullable=False)
+    status = db.Column(db.String, nullable=False, default="PENDING")
+
+
+class SupportChat(db.Model):
+    chat_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    message = db.Column(db.String, nullable=False, default="")
+    from_id = db.Column(db.Integer, nullable=False, default=0)
+    to_id = db.Column(db.Integer, nullable=False, default=0)
+    date = db.Column(db.DateTime, nullable=False, default=datetime.now())

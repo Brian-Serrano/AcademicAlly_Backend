@@ -9,7 +9,8 @@ from PIL import Image
 from itsdangerous import URLSafeTimedSerializer
 
 from config import ALLOWED_EXTENSIONS, EMAIL_REGEX, PASSWORD_REGEX, api, SALT
-from db import Achievement, User, CourseSkill, db, Course, Assignment, Session, Message
+from db import Achievement, User, CourseSkill, db, Course, Assignment, Session, Message, \
+    PendingMultipleChoiceAssessment, PendingIdentificationAssessment, PendingTrueOrFalseAssessment
 
 
 def list_to_string(lst):
@@ -22,6 +23,10 @@ def string_to_list(string):
 
 def string_to_double_list(string):
     return [*map(lambda x: float(x), string.split(','))]
+
+
+def string_to_int_list(string):
+    return [*map(lambda x: int(x), string.split(','))]
 
 
 def compute_achievement_progress(data, achievements_goal, achievements_index, achievement_progress):
@@ -440,3 +445,88 @@ def validate_token(token, expiration=3600):
     except Exception as e:
         print(f"Token validation error: {e}")
         return None
+
+
+def map_assessments(pending_assessment):
+    course = Course.query.filter_by(course_id=pending_assessment.course_id).first()
+    return {
+        "assessmentId": pending_assessment.assessment_id,
+        "courseId": pending_assessment.course_id,
+        "courseName": course.course_name,
+        "module": pending_assessment.module,
+        "creator": pending_assessment.creator
+    }
+
+
+def save_pending_multiple_choice_assessment(data, course_id):
+    multiple_choice = PendingMultipleChoiceAssessment(
+        course_id=course_id,
+        module=data["module"],
+        question=data["question"],
+        letter_a=data["letterA"],
+        letter_b=data["letterB"],
+        letter_c=data["letterC"],
+        letter_d=data["letterD"],
+        answer=data["answer"],
+        creator=data["creator"]
+    )
+    db.session.add(multiple_choice)
+    return PendingMultipleChoiceAssessment.query.filter_by(question=data["question"], letter_a=data["letterA"], letter_b=data["letterB"], letter_c=data["letterC"], letter_d=data["letterD"], answer=data["answer"]).first().assessment_id
+
+
+def save_pending_identification_assessment(data, course_id):
+    identification = PendingIdentificationAssessment(
+        course_id=course_id,
+        module=data["module"],
+        question=data["question"],
+        answer=data["answer"],
+        creator=data["creator"]
+    )
+    db.session.add(identification)
+    return PendingIdentificationAssessment.query.filter_by(question=data["question"], answer=data["answer"]).first().assessment_id
+
+
+def save_pending_true_or_false_assessment(data, course_id):
+    true_or_false = PendingTrueOrFalseAssessment(
+        course_id=course_id,
+        module=data["module"],
+        question=data["question"],
+        answer=data["answer"] == "TRUE",
+        creator=data["creator"]
+    )
+    db.session.add(true_or_false)
+    return PendingTrueOrFalseAssessment.query.filter_by(question=data["question"], answer=data["answer"] == "TRUE").first().assessment_id
+
+
+def map_multiple_choice_assignment(assessment_id):
+    assignment = PendingMultipleChoiceAssessment.query.filter_by(assessment_id=assessment_id).first()
+    return {
+        "module": assignment.module,
+        "question": assignment.question,
+        "letterA": assignment.letter_a,
+        "letterB": assignment.letter_b,
+        "letterC": assignment.letter_c,
+        "letterD": assignment.letter_d,
+        "answer": assignment.answer,
+        "creator": assignment.creator
+    }
+
+
+def map_identification_assignment(assessment_id):
+    assignment = PendingIdentificationAssessment.query.filter_by(assessment_id=assessment_id).first()
+    return {
+        "module": assignment.module,
+        "question": assignment.question,
+        "answer": assignment.answer,
+        "creator": assignment.creator
+    }
+
+
+def map_true_or_false_assignment(assessment_id):
+    assignment = PendingTrueOrFalseAssessment.query.filter_by(assessment_id=assessment_id).first()
+    return {
+        "module": assignment.module,
+        "question": assignment.question,
+        "answer": "TRUE" if assignment.answer else "FALSE",
+        "creator": assignment.creator
+    }

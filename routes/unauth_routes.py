@@ -12,7 +12,7 @@ import jwt
 from config import api, db, SALT, PASSWORD_REGEX, PASSWORD
 from db import User, CourseSkill
 from utils import validate_login, update_course_eligibility, validate_signup, update_assessment_achievement, \
-    generate_token
+    generate_token, validate_token
 
 unauth_bp = Blueprint("unauth_routes", __name__)
 
@@ -90,7 +90,7 @@ def forgot_password():
     try:
         email_sender = "Brianserrano503@gmail.com"
         email_receiver = request.json["email"]
-        msg = MIMEText(f'Please access the <a href="http://127.0.0.1:5000/template_routes/forgot_password_page/{generate_token(email_receiver)}">link</a> to change your password and recover your account.', "html")
+        msg = MIMEText(f'Please access the <a href="https://brianserrano.pythonanywhere.com/template_routes/forgot_password_page/{generate_token(email_receiver)}">link</a> to change your password and recover your account.', "html")
         msg["Subject"] = "Forgot Password"
         msg["From"] = email_sender
         msg["To"] = email_receiver
@@ -99,7 +99,7 @@ def forgot_password():
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
             smtp.login(email_sender, PASSWORD)
             smtp.sendmail(email_sender, email_receiver, msg.as_string())
-            return jsonify({"message": "A mail for recovering your account has sent.", "type": "success"}), 201
+            return jsonify({"data": {"message": "A mail for recovering your account has sent."}, "type": "success"}), 201
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
@@ -108,7 +108,7 @@ def forgot_password():
 def change_password():
     try:
         data = request.get_json()
-        user = User.query.filter_by(id=data["email"]).first()
+        user = User.query.filter_by(email=validate_token(data["email"])).first()
         if re.search(PASSWORD_REGEX, data["password"]):
             user.password = bcrypt.hashpw(data["password"].encode(), SALT).decode()
             db.session.commit()
@@ -117,5 +117,4 @@ def change_password():
             return jsonify({"data": "Invalid Password", "type": "validationError"}), 250
     except Exception as e:
         db.session.rollback()
-        print(e)
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
