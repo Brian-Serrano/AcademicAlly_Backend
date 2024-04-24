@@ -1,183 +1,104 @@
-import os
+import re
 from datetime import datetime, timedelta
 
-import bcrypt
-from flask import request, jsonify, Blueprint
-from werkzeug.utils import secure_filename
+from firebase_admin import messaging
+from flask import Blueprint, request, jsonify
 
-from config import api, UPLOAD_FOLDER, db, SALT
-from db import User, Message, Assignment, Session, SupportChat
+from config import db
+from db import Session, Course, User, Assignment, Message
 from routes.auth_wrapper import auth_required
-from utils import allowed_file, string_to_double_list, compute_achievement_progress, list_to_string, \
-    check_completed_achievements, validate_info, validate_password, update_course_eligibility, \
-    save_pending_multiple_choice_assessment, save_pending_identification_assessment, \
-    save_pending_true_or_false_assessment
+from utils import string_to_list, map_sessions, get_archive_sessions, save_pending_multiple_choice_assessment, \
+    save_pending_identification_assessment, save_pending_true_or_false_assessment, list_to_string, match_date, \
+    string_to_double_list, compute_achievement_progress, check_completed_achievements
 
-post_bp = Blueprint("post_routes", __name__)
+session_bp = Blueprint("session_routes", __name__)
 
 
-@post_bp.route("/upload_image", methods=["POST"])
+@session_bp.route("/get_session", methods=["GET"])
 @auth_required
-def upload_image(current_user):
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part", "type": "error"}), 500
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file", "type": "error"}), 500
-    if file and allowed_file(file.filename):
-        try:
-            user = User.query.filter_by(id=current_user["id"]).first()
-            filename = secure_filename(datetime.now().strftime("%d_%m_%Y_%H_%M_%S") + '.' + file.filename.rsplit('.', 1)[1])
-            file.save(os.path.join(api.config['UPLOAD_FOLDER'], filename))
-            user.image_path = UPLOAD_FOLDER + "/" + filename
-            db.session.commit()
-            return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-    return jsonify({"error": "Error", "type": "error"}), 500
-
-
-@post_bp.route("/reject_student", methods=["POST"])
-@auth_required
-def reject_student(current_user):
+def get_session(current_user):
     try:
-        data = request.get_json()
-        message = Message.query.filter_by(message_id=data["messageId"]).first()
+        session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
 
-        if message.status == "WAITING":
-            student = User.query.filter_by(id=data["studentId"]).first()
-            tutor = User.query.filter_by(id=data["tutorId"]).first()
-            message.status = "REJECT"
-            student.denied_requests = student.denied_requests + 1
-            tutor.requests_denied = tutor.requests_denied + 1
+        if session.status == "UPCOMING":
 
-            # Update achievement
-            current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
-            computed_progress_tutor = compute_achievement_progress(
-                float(tutor.requests_denied),
-                [1, 3, 10],
-                [4, 5, 6],
-                current_progress_tutor
-            )
-            tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
+            if current_user["role"] == "STUDENT":
+                session.student_viewed = True
+                db.session.commit()
 
-            db.session.commit()
-            response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
-            return jsonify({"data": response, "type": "success"}), 201
+            course = Course.query.filter_by(course_id=session.course_id).first()
+            response = {
+                "sessionId": session.session_id,
+                "courseName": course.course_name,
+                "tutorId": session.tutor_id,
+                "tutorName": User.query.filter_by(id=session.tutor_id).first().name,
+                "studentId": session.student_id,
+                "studentName": User.query.filter_by(id=session.student_id).first().name,
+                "moduleName": string_to_list(course.modules)[session.module_id],
+                "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
+                "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
+                "location": session.location
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
         else:
-            return jsonify({"error": "Message may be accepted or rejected", "type": "error"}), 500
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/update_info", methods=["POST"])
+@session_bp.route("/get_session_settings", methods=["GET"])
 @auth_required
-def update_info(current_user):
+def get_session_settings(current_user):
     try:
-        data = request.get_json()
-        validation = validate_info(data, current_user["name"])
-        if validation["isValid"]:
-            user = User.query.filter_by(id=current_user["id"]).first()
-            user.name = data["name"]
-            user.age = data["age"]
-            user.degree = data["degree"]
-            user.address = data["address"]
-            user.contact_number = data["contactNumber"]
-            user.summary = data["summary"]
-            user.educational_background = data["educationalBackground"]
-            user.free_tutoring_time = data["freeTutoringTime"]
-            db.session.commit()
-        return jsonify({"data": validation, "type": "success"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
+        session = Session.query.filter_by(session_id=request.args.get("session_id")).first()
 
-
-@post_bp.route("/update_password", methods=["POST"])
-@auth_required
-def update_password(current_user):
-    try:
-        data = request.get_json()
-        user = User.query.filter_by(id=current_user["id"]).first()
-        validation = validate_password(data["currentPassword"], data["newPassword"], data["confirmPassword"], user.password)
-        if validation["isValid"]:
-            user.password = bcrypt.hashpw(data["newPassword"].encode(), SALT).decode()
-            db.session.commit()
-        return jsonify({"data": validation, "type": "success"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/switch_role", methods=["POST"])
-@auth_required
-def switch_role(current_user):
-    try:
-        user = User.query.filter_by(id=current_user["id"]).first()
-        user.role = "TUTOR" if (current_user["role"] == "STUDENT") else "STUDENT"
-        db.session.commit()
-        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/complete_assessment", methods=["POST"])
-@auth_required
-def complete_assessment(current_user):
-    try:
-        data = request.get_json()
-        response = update_course_eligibility(data["courseId"], current_user["id"], data["rating"], data["score"])
-        return jsonify({"data": response, "type": "success"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/complete_assignment", methods=["POST"])
-@auth_required
-def complete_assignment(current_user):
-    try:
-        data = request.get_json()
-        assignment = Assignment.query.filter_by(assignment_id=data["assignmentId"]).first()
-
-        if assignment.status == "UNCOMPLETED":
-            student = User.query.filter_by(id=current_user["id"]).first()
-            assignment.student_score = data["score"]
-            assignment.status = "COMPLETED"
-            student.assignments_taken = student.assignments_taken + 1
-            student.student_assignment_points = student.student_assignment_points + (data["score"] * 0.1)
-            student.student_points = student.student_points + (data["score"] * 0.1)
-
-            # Update achievement
-            current_progress_student = string_to_double_list(student.badge_progress_as_student)
-            computed_progress_student = compute_achievement_progress(
-                student.student_points,
-                [10, 25, 50, 100, 200],
-                [7, 8, 9, 10, 11],
-                compute_achievement_progress(
-                    float(student.assignments_taken),
-                    [1, 5, 10],
-                    [19, 20, 21],
-                    current_progress_student
-                )
-            )
-            student.badge_progress_as_student = list_to_string(computed_progress_student)
-
-            db.session.commit()
-            response = check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")
-            return jsonify({"data": response, "type": "success"}), 201
+        if session.status == "UPCOMING":
+            response = {
+                "startTime": session.start_time.strftime("%d/%m/%Y %I:%M %p"),
+                "endTime": session.end_time.strftime("%d/%m/%Y %I:%M %p"),
+                "location": session.location
+            }
+            return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
         else:
-            return jsonify({"error": "Assignment may be completed or deadlined", "type": "error"}), 500
+            return jsonify({"error": "Session may be completed or cancelled", "type": "error"}), 500
     except Exception as e:
-        db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/complete_session_and_create_assignment", methods=["POST"])
+@session_bp.route("/get_session_notifications", methods=["GET"])
+@auth_required
+def get_session_notifications(current_user):
+    try:
+        user_id = current_user["id"]
+        role = current_user["role"]
+        if role == "STUDENT":
+            sessions = Session.query.filter_by(student_id=user_id, status="UPCOMING").all()
+        else:
+            sessions = Session.query.filter_by(tutor_id=user_id, status="UPCOMING").all()
+
+        response = [*map(map_sessions, sessions)]
+        return jsonify({"data": response, "type": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
+
+
+@session_bp.route("/search_session_archives", methods=["GET"])
+@auth_required
+def search_session_archives(current_user):
+    try:
+        search_query = request.args.get("search_query")
+        sessions = get_archive_sessions(current_user["role"], current_user["id"], request.args.get("status"))
+        if search_query:
+            response = [*filter(lambda x: re.search(search_query, x["name"], re.IGNORECASE) or re.search(search_query, x["course_name"], re.IGNORECASE) or re.search(search_query, x["location"], re.IGNORECASE) or match_date(datetime.strptime(x["start_time"], "%d/%m/%Y %I:%M %p"), search_query) or match_date(datetime.strptime(x["end_time"], "%d/%m/%Y %I:%M %p"), search_query), sessions)]
+            return jsonify({"data": response, "type": "success"}), 200
+        else:
+            return jsonify({"data": sessions, "type": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
+
+
+@session_bp.route("/complete_session_and_create_assignment", methods=["POST"])
 @auth_required
 def complete_session_and_create_assignment(current_user):
     try:
@@ -267,6 +188,14 @@ def complete_session_and_create_assignment(current_user):
             )
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
+            notification = messaging.Message(
+                notification=messaging.Notification(
+                    title="Session Completed",
+                    body=f"{tutor.name} completed the session and made your task."
+                ),
+                token=student.push_notifications_token
+            )
+
             db.session.commit()
             response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
             return jsonify({"data": response, "type": "success"}), 201
@@ -277,7 +206,7 @@ def complete_session_and_create_assignment(current_user):
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/create_session", methods=["POST"])
+@session_bp.route("/create_session", methods=["POST"])
 @auth_required
 def create_session(current_user):
     try:
@@ -337,6 +266,16 @@ def create_session(current_user):
             )
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
+            notification = messaging.Message(
+                notification=messaging.Notification(
+                    title="Request Accepted",
+                    body=f"{tutor.name} accepted your request and created session."
+                ),
+                token=student.push_notifications_token
+            )
+
+            messaging.send(notification)
+
             db.session.commit()
             response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
             return jsonify({"data": response, "type": "success"}), 201
@@ -347,7 +286,7 @@ def create_session(current_user):
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/update_session", methods=["POST"])
+@session_bp.route("/update_session", methods=["POST"])
 @auth_required
 def update_session(current_user):
     try:
@@ -370,65 +309,7 @@ def update_session(current_user):
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@post_bp.route("/send_tutor_request", methods=["POST"])
-@auth_required
-def send_tutor_request(current_user):
-    try:
-        data = request.get_json()
-        message = Message.query.filter_by(student_id=data["studentId"], tutor_id=data["tutorId"], status="WAITING").all()
-
-        if not message:
-            new_message = Message(
-                course_id=data["courseId"],
-                module_id=data["moduleId"],
-                student_id=data["studentId"],
-                tutor_id=data["tutorId"],
-                student_message=data["studentMessage"]
-            )
-            db.session.add(new_message)
-            student = User.query.filter_by(id=data["studentId"]).first()
-            tutor = User.query.filter_by(id=data["tutorId"]).first()
-            student.requests_sent = student.requests_sent + 1
-            student.student_request_points = student.student_request_points + 0.1
-            student.student_points = student.student_points + 0.1
-            tutor.requests_received = tutor.requests_received + 1
-            tutor.tutor_request_points = tutor.tutor_request_points + 0.1
-            tutor.tutor_points = tutor.tutor_points + 0.1
-
-            # Update achievement
-            current_progress_student = string_to_double_list(student.badge_progress_as_student)
-            computed_progress_student = compute_achievement_progress(
-                student.student_points,
-                [10, 25, 50, 100, 200],
-                [7, 8, 9, 10, 11],
-                compute_achievement_progress(
-                    float(student.requests_sent),
-                    [1, 5, 10, 20],
-                    [0, 1, 2, 3],
-                    current_progress_student
-                )
-            )
-            student.badge_progress_as_student = list_to_string(computed_progress_student)
-
-            current_progress_tutor = string_to_double_list(tutor.badge_progress_as_tutor)
-            computed_progress_tutor = compute_achievement_progress(
-                tutor.tutor_points,
-                [10, 25, 50, 100, 200],
-                [7, 8, 9, 10, 11],
-                current_progress_tutor
-            )
-            tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
-
-            db.session.commit()
-            return jsonify({"achievements": check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT"), "type": "success"}), 201
-        else:
-            return jsonify({"message": "Tutor can only be message once.", "type": "duplicate"}), 401
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/rate_user", methods=["POST"])
+@session_bp.route("/rate_user", methods=["POST"])
 @auth_required
 def rate_user(current_user):
     try:
@@ -494,40 +375,6 @@ def rate_user(current_user):
             db.session.commit()
             response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
             return jsonify({"data": response, "type": "success"}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/complete_learning_pattern_assessment", methods=["POST"])
-@auth_required
-def complete_learning_pattern_assessment(current_user):
-    try:
-        data = request.get_json()
-        user = User.query.filter_by(id=current_user["id"]).first()
-        learning_style = sorted(data, key=data.get, reverse=True)[:2]
-        user.primary_learning_pattern = learning_style[0].title()
-        user.secondary_learning_pattern = learning_style[1].title()
-        db.session.commit()
-        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
-
-
-@post_bp.route("/send_support_message", methods=["POST"])
-@auth_required
-def send_support_message(current_user):
-    try:
-        data = request.get_json()
-        support = SupportChat(
-            message=data["message"],
-            from_id=data["fromId"],
-            to_id=data["toId"]
-        )
-        db.session.add(support)
-        db.session.commit()
-        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

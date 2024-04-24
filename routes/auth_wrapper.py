@@ -18,6 +18,10 @@ def auth_required(f):
         try:
             data = jwt.decode(token, api.config['SECRET_KEY'], algorithms=['HS256'])
             user = User.query.filter_by(id=data["user_id"]).first()
+
+            if user.is_banned:
+                return jsonify({"error": "User is banned", "type": "error"}), 401
+
             current_user = {
                 "id": user.id,
                 "name": user.name,
@@ -43,6 +47,10 @@ def auth_optional(f):
         try:
             data = jwt.decode(token, api.config['SECRET_KEY'], algorithms=['HS256'])
             user = User.query.filter_by(id=data["user_id"]).first()
+
+            if user.is_banned:
+                return jsonify({"error": "User is banned", "type": "error"}), 401
+
             current_user = {
                 "id": user.id,
                 "name": user.name,

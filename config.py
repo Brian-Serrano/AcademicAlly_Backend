@@ -1,10 +1,15 @@
 import os
 import re
+import firebase_admin
 
 from flask import Flask
 from flask_apscheduler import APScheduler
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from firebase_admin import credentials
+
+cred = credentials.Certificate("service_account_key.json")
+firebase_admin.initialize_app(cred)
 
 UPLOAD_FOLDER = 'images'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}

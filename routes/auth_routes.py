@@ -14,17 +14,19 @@ from db import User, CourseSkill
 from utils import validate_login, update_course_eligibility, validate_signup, update_assessment_achievement, \
     generate_token, validate_token
 
-unauth_bp = Blueprint("unauth_routes", __name__)
+auth_bp = Blueprint("auth_routes", __name__)
 
 
-@unauth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["POST"])
 def login():
     try:
         data = request.get_json()
         user = User.query.filter_by(email=data["email"], role=data["role"]).first()
-        validation = validate_login(user, data["email"], data["password"])
+        validation = validate_login(user, data["email"], data["password"], False)
         if validation["isValid"]:
             token = jwt.encode({"user_id": user.id, "exp": datetime.now() + timedelta(days=7)}, api.config['SECRET_KEY'], algorithm='HS256')
+            user.push_notifications_token = data["notificationsToken"]
+            db.session.commit()
             if data["eligibility"]:
                 response = {
                     "achievements": update_course_eligibility(data["courseId"], user.id, data["rating"], data["score"]),
@@ -42,17 +44,18 @@ def login():
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@unauth_bp.route("/signup", methods=["POST"])
+@auth_bp.route("/signup", methods=["POST"])
 def signup():
     try:
         data = request.get_json()
-        validation = validate_signup(data["name"], data["email"], data["password"], data["confirmPassword"])
+        validation = validate_signup(data["name"], data["email"], data["password"], data["confirmPassword"], False)
         if validation["isValid"]:
             user = User(
                 name=data["name"],
                 role=data["role"],
                 email=data["email"],
-                password=bcrypt.hashpw(data["password"].encode(), SALT).decode()
+                password=bcrypt.hashpw(data["password"].encode(), SALT).decode(),
+                push_notifications_token=data["notificationsToken"]
             )
             db.session.add(user)
             user_id = User.query.filter_by(name=data["name"], email=data["email"], role=data["role"]).first().id
@@ -85,7 +88,7 @@ def signup():
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@unauth_bp.route("/forgot_password", methods=["POST"])
+@auth_bp.route("/forgot_password", methods=["POST"])
 def forgot_password():
     try:
         email_sender = "Brianserrano503@gmail.com"
@@ -104,7 +107,7 @@ def forgot_password():
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
 
 
-@unauth_bp.route("/change_password", methods=["POST"])
+@auth_bp.route("/change_password", methods=["POST"])
 def change_password():
     try:
         data = request.get_json()

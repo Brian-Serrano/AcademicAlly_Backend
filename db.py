@@ -54,6 +54,9 @@ class User(db.Model):
     primary_learning_pattern = db.Column(db.String, nullable=False, default="NA")
     secondary_learning_pattern = db.Column(db.String, nullable=False, default="NA")
 
+    push_notifications_token = db.Column(db.String, nullable=False, default="")
+    is_banned = db.Column(db.Boolean, nullable=False, default=False)
+
 
 class Message(db.Model):
     message_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -201,3 +204,11 @@ class SupportChat(db.Model):
     from_id = db.Column(db.Integer, nullable=False, default=0)
     to_id = db.Column(db.Integer, nullable=False, default=0)
     date = db.Column(db.DateTime, nullable=False, default=datetime.now())
+    is_closed = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class Admin(db.Model):
+    admin_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String, nullable=False, default="Test")
+    email = db.Column(db.String, nullable=False, default="test@gmail.com")
+    password = db.Column(db.String, nullable=False, default="test123")

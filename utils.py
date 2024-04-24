@@ -10,7 +10,7 @@ from itsdangerous import URLSafeTimedSerializer
 
 from config import ALLOWED_EXTENSIONS, EMAIL_REGEX, PASSWORD_REGEX, api, SALT
 from db import Achievement, User, CourseSkill, db, Course, Assignment, Session, Message, \
-    PendingMultipleChoiceAssessment, PendingIdentificationAssessment, PendingTrueOrFalseAssessment
+    PendingMultipleChoiceAssessment, PendingIdentificationAssessment, PendingTrueOrFalseAssessment, Admin
 
 
 def list_to_string(lst):
@@ -205,7 +205,7 @@ def update_course_eligibility(course_id, user_id, rating, score):
     return update_assessment_achievement(rating >= 0.5, score, user_id)
 
 
-def validate_login(user, email, password):
+def validate_login(user, email, password, is_admin):
     if not email or not password:
         return {"isValid": False, "message": "Fill up all empty fields"}
     if not 15 <= len(email) <= 40 or not 8 <= len(password) <= 20:
@@ -214,6 +214,8 @@ def validate_login(user, email, password):
         return {"isValid": False, "message": "User not found"}
     if not bcrypt.checkpw(password.encode(), user.password.encode()):
         return {"isValid": False, "message": "Wrong password"}
+    if not is_admin and user.is_banned:
+        return {"isValid": False, "message": "User is banned"}
 
     return {"isValid": True, "message": "User Logged In"}
 
@@ -255,7 +257,9 @@ def map_assignments(assignment):
     }
 
 
-def validate_signup(name, email, password, confirm_password):
+def validate_signup(name, email, password, confirm_password, is_admin):
+    users = Admin.query.all() if is_admin else User.query.all()
+
     if not name or not email or not password or not confirm_password:
         return {"isValid": False, "message": "Fill up all empty fields"}
     if not 5 <= len(name) <= 20 or not 15 <= len(email) <= 40 or not 8 <= len(password) <= 20:
@@ -266,9 +270,9 @@ def validate_signup(name, email, password, confirm_password):
         return {"isValid": False, "message": "Invalid Email"}
     if not re.search(PASSWORD_REGEX, password):
         return {"isValid": False, "message": "Invalid Password"}
-    if any(x.name == name for x in User.query.all()):
+    if any(x.name == name for x in users):
         return {"isValid": False, "message": "Username already exist"}
-    if any(x.email == email for x in User.query.all()):
+    if any(x.email == email for x in users):
         return {"isValid": False, "message": "Email already exist"}
 
     return {"isValid": True, "message": "Success"}
@@ -333,7 +337,7 @@ def get_tutor_datas(course_filter, search_query, user_id):
     course_skills = [*map(lambda x: CourseSkill.query.filter_by(course_id=x, role="TUTOR").all(), course_filter)]
     flatten_course_skills = sorted([x for cs in course_skills for x in cs], key=lambda x: x.user_id)
     grouped_course_skills = [map_tutors(k, g) for k, g in groupby(flatten_course_skills, lambda x: x.user_id)]
-    return search_tutors([*filter(lambda x: user_id != x["tutorId"], grouped_course_skills)], search_query)
+    return search_tutors([*filter(lambda x: user_id != x["tutorId"] and not x["isBanned"], grouped_course_skills)], search_query)
 
 
 def search_tutors(tutors, search_query):
@@ -352,7 +356,8 @@ def map_tutors(user_id, course_skills):
         "performance": {"rating": user.total_rating_as_tutor, "rateNumber": user.number_of_rates_as_tutor},
         "primaryPattern": user.primary_learning_pattern,
         "secondaryPattern": user.secondary_learning_pattern,
-        "image": get_response_image(user.image_path)
+        "image": get_response_image(user.image_path),
+        "isBanned": user.is_banned
     }
     return response
 
@@ -530,3 +535,37 @@ def map_true_or_false_assignment(assessment_id):
         "answer": "TRUE" if assignment.answer else "FALSE",
         "creator": assignment.creator
     }
+
+
+def map_search_user_admin(user):
+    return {
+        "id": user.id,
+        "name": user.name,
+        "role": user.role,
+        "email": user.email,
+        "degree": user.degree,
+        "age": user.age,
+        "address": user.address,
+        "contactNumber": user.contact_number,
+        "summary": user.summary,
+        "educationalBackground": user.educational_background,
+        "image": get_response_image(user.image_path),
+        "freeTutoringTime": user.free_tutoring_time,
+        "isBanned": user.is_banned
+    }
+
+
+def map_chats(key, group):
+    user = User.query.filter_by(id=key).first()
+    return {
+        "messages": [{"message": x.message, "sentDate": x.date.strftime("%d/%m/%Y %I:%M %p"), "isSender": x.to_id == 0} for x in group],
+        "userId": key,
+        "userName": user.name,
+        "userRole": user.role,
+        "userEmail": user.email,
+        "userImage": get_response_image(user.image_path)
+    }
+
+
+def support_key(x):
+    return x.from_id if x.to_id == 0 else x.to_id
