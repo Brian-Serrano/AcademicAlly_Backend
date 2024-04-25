@@ -193,8 +193,11 @@ def complete_session_and_create_assignment(current_user):
                     title="Session Completed",
                     body=f"{tutor.name} completed the session and made your task."
                 ),
+                android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )
+
+            messaging.send(notification)
 
             db.session.commit()
             response = check_completed_achievements(current_progress_tutor, computed_progress_tutor, "TUTOR")
@@ -271,6 +274,7 @@ def create_session(current_user):
                     title="Request Accepted",
                     body=f"{tutor.name} accepted your request and created session."
                 ),
+                android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )
 

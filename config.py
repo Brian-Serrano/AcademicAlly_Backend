@@ -4,7 +4,6 @@ import firebase_admin
 
 from flask import Flask
 from flask_apscheduler import APScheduler
-from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from firebase_admin import credentials
 
@@ -23,5 +22,4 @@ api.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URI")
 api.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 api.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
 db = SQLAlchemy(api)
-migrate = Migrate(api, db)
 scheduler = APScheduler()

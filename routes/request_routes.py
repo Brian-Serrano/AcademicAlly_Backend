@@ -225,6 +225,7 @@ def reject_student(current_user):
                     title="Request Rejected",
                     body=f"{tutor.name} rejected your tutoring request."
                 ),
+                android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )
 
