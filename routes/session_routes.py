@@ -189,10 +189,10 @@ def complete_session_and_create_assignment(current_user):
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
             notification = messaging.Message(
-                notification=messaging.Notification(
-                    title="Session Completed",
-                    body=f"{tutor.name} completed the session and made your task."
-                ),
+                data={
+                    "title": "Session Completed",
+                    "body": f"{tutor.name} completed the session and made your task."
+                },
                 android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )
@@ -270,10 +270,10 @@ def create_session(current_user):
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
             notification = messaging.Message(
-                notification=messaging.Notification(
-                    title="Request Accepted",
-                    body=f"{tutor.name} accepted your request and created session."
-                ),
+                data={
+                    "title": "Request Accepted",
+                    "body": f"{tutor.name} accepted your request and created session."
+                },
                 android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )

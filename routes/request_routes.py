@@ -221,10 +221,10 @@ def reject_student(current_user):
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
             notification = messaging.Message(
-                notification=messaging.Notification(
-                    title="Request Rejected",
-                    body=f"{tutor.name} rejected your tutoring request."
-                ),
+                data={
+                    "title": "Request Rejected",
+                    "body": f"{tutor.name} rejected your tutoring request."
+                },
                 android=messaging.AndroidConfig(priority="high"),
                 token=student.push_notifications_token
             )
@@ -291,10 +291,11 @@ def send_tutor_request(current_user):
             tutor.badge_progress_as_tutor = list_to_string(computed_progress_tutor)
 
             notification = messaging.Message(
-                notification=messaging.Notification(
-                    title="Requesting Tutoring",
-                    body=f"{student.name} requests tutoring with you."
-                ),
+                data={
+                    "title": "Requesting Tutoring",
+                    "body": f"{student.name} requests tutoring with you."
+                },
+                android=messaging.AndroidConfig(priority="high"),
                 token=tutor.push_notifications_token
             )
 
