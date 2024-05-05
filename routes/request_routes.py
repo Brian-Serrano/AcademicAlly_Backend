@@ -163,7 +163,7 @@ def get_tutors(current_user):
         response = {
             "studentCourseIds": course_skill_ids,
             "courses": [*map(lambda x: {"id": x.course_id, "name": x.course_name}, courses)],
-            "tutors": get_tutor_datas(course_skill_ids, "", user_id)
+            "tutors": get_tutor_datas(course_skill_ids, "", user_id, current_user["primaryLearning"], current_user["secondaryLearning"])
         }
         return jsonify({"data": response, "currentUser": current_user, "type": "success"}), 200
     except Exception as e:
@@ -175,7 +175,7 @@ def get_tutors(current_user):
 def search_tutor(current_user):
     try:
         filters = request.args.get("course_filter").split(',') if request.args.get("course_filter") else []
-        response = get_tutor_datas([int(x) for x in filters], request.args.get("search_query"), current_user["id"])
+        response = get_tutor_datas([int(x) for x in filters], request.args.get("search_query"), current_user["id"], current_user["primaryLearning"], current_user["secondaryLearning"])
         return jsonify({"data": response, "type": "success"}), 200
     except Exception as e:
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

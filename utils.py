@@ -333,11 +333,11 @@ def map_archive_sessions(role, session):
     }
 
 
-def get_tutor_datas(course_filter, search_query, user_id):
+def get_tutor_datas(course_filter, search_query, user_id, primary_learning, secondary_learning):
     course_skills = [*map(lambda x: CourseSkill.query.filter_by(course_id=x, role="TUTOR").all(), course_filter)]
     flatten_course_skills = sorted([x for cs in course_skills for x in cs], key=lambda x: x.user_id)
     grouped_course_skills = [map_tutors(k, g) for k, g in groupby(flatten_course_skills, lambda x: x.user_id)]
-    return search_tutors([*filter(lambda x: user_id != x["tutorId"] and not x["isBanned"], grouped_course_skills)], search_query)
+    return search_tutors([*filter(lambda x: user_id != x["tutorId"] and not x["isBanned"] and (primary_learning == x["primaryPattern"] or secondary_learning == x["secondaryPattern"]), grouped_course_skills)], search_query)
 
 
 def search_tutors(tutors, search_query):
