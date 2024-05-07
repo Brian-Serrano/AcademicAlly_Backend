@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 
+from firebase_admin import messaging
 from flask import Blueprint, request, jsonify
 
 from config import db
@@ -136,6 +137,17 @@ def complete_assignment(current_user):
                 )
             )
             student.badge_progress_as_student = list_to_string(computed_progress_student)
+
+            notification = messaging.Message(
+                data={
+                    "title": "Student Answered Assignment",
+                    "body": student.name + " answers the assignment you gave and got " + data["score"] + " points."
+                },
+                android=messaging.AndroidConfig(priority="high"),
+                token=User.query.filter_by(id=assignment.tutor_id).first().push_notifications_token
+            )
+
+            messaging.send(notification)
 
             db.session.commit()
             response = check_completed_achievements(current_progress_student, computed_progress_student, "STUDENT")
