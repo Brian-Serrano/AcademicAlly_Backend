@@ -223,9 +223,20 @@ def update_password(current_user):
 def switch_role(current_user):
     try:
         user = User.query.filter_by(id=current_user["id"]).first()
-        user.role = "TUTOR" if (current_user["role"] == "STUDENT") else "STUDENT"
-        db.session.commit()
-        return jsonify({"data": {"message": "Success"}, "type": "success"}), 201
+        if current_user["role"] == "STUDENT":
+            if CourseSkill.query.filter_by(user_id=current_user["id"], role="TUTOR").all():
+                user.role = "TUTOR"
+                db.session.commit()
+                return jsonify({"data": {"isValid": True, "message": "Switch role successful!"}, "type": "success"}), 201
+            else:
+                return jsonify({"data": {"isValid": False, "message": "You don't have courses eligible as tutor."}, "type": "success"}), 201
+        else:
+            if CourseSkill.query.filter_by(user_id=current_user["id"], role="STUDENT").all():
+                user.role = "STUDENT"
+                db.session.commit()
+                return jsonify({"data": {"isValid": True, "message": "Switch role successful!"}, "type": "success"}), 201
+            else:
+                return jsonify({"data": {"isValid": False, "message": "You don't have courses eligible as student."}, "type": "success"}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500

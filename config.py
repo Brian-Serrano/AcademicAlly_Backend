@@ -6,6 +6,9 @@ from flask import Flask
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from firebase_admin import credentials
+from dotenv import load_dotenv
+
+load_dotenv()
 
 cred = credentials.Certificate("service_account_key.json")
 firebase_admin.initialize_app(cred)

@@ -17,7 +17,7 @@ class User(db.Model):
     contact_number = db.Column(db.String, nullable=False, default="NA")
     summary = db.Column(db.String, nullable=False, default="This user has no summary provided")
     educational_background = db.Column(db.String, nullable=False, default="This user has no educational background provided")
-    free_tutoring_time = db.Column(db.String, nullable=False, default="Always available")
+    free_tutoring_time = db.Column(db.String, nullable=False, default='|'.join(["12:00 AM,11:59 PM"] * 7))
 
     student_points = db.Column(db.Double, nullable=False, default=0.0)
     student_assessment_points = db.Column(db.Double, nullable=False, default=0.0)

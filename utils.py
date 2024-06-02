@@ -1,3 +1,4 @@
+from datetime import datetime
 import io
 import random
 import re
@@ -5,6 +6,7 @@ from base64 import encodebytes
 from itertools import groupby
 
 import bcrypt
+import pytz
 from PIL import Image
 from itsdangerous import URLSafeTimedSerializer
 
@@ -158,12 +160,12 @@ def validate_info(data, current_name):
         return {"isValid": False, "message": "Summary should be 30-200 characters length."}
     if not 30 <= len(data["educationalBackground"]) <= 200:
         return {"isValid": False, "message": "Educational Background should be 30-200 characters length."}
-    if not 15 <= len(data["freeTutoringTime"]) <= 100:
-        return {"isValid": False, "message": "Free tutoring time should be 15-100 characters length."}
     if not 15 <= int(data["age"]) <= 50:
         return {"isValid": False, "message": "Age should range from 15 to 50"}
     if not re.search("BSCS|HRS|STEM|IT|ACT|HRM|ABM", data["degree"]):
         return {"isValid": False, "message": "Please enter valid degree."}
+    if validate_tutoring_dates(data["freeTutoringTime"]):
+        return {"isValid": False, "message": "Invalid date ranges: " + ', '.join(validate_tutoring_dates(data["freeTutoringTime"]))}
     if any(x.name == data["name"] for x in User.query.all()) and data["name"] != current_name:
         return {"isValid": False, "message": "Username already exists."}
 
@@ -356,10 +358,32 @@ def map_tutors(user_id, course_skills):
         "performance": {"rating": user.total_rating_as_tutor, "rateNumber": user.number_of_rates_as_tutor},
         "primaryPattern": user.primary_learning_pattern,
         "secondaryPattern": user.secondary_learning_pattern,
+        "isAvailable": get_tutor_availability(user.free_tutoring_time),
         "image": get_response_image(user.image_path),
         "isBanned": user.is_banned
     }
     return response
+
+
+def get_tutor_availability(time_str):
+    time_list = time_str.split("|")
+    for idx, time_pair in enumerate(time_list):
+        time = time_pair.split(",")
+        if datetime.now(pytz.timezone("Asia/Shanghai")).isoweekday() - 1 == idx and get_date(time[0]) < datetime.now(pytz.timezone("Asia/Shanghai")).timestamp() < get_date(time[1]):
+            return True
+
+    return False
+
+
+def get_date(time_str):
+    current_date = datetime.now(pytz.timezone("Asia/Shanghai"))
+    return datetime.strptime(time_str, "%I:%M %p").replace(year=current_date.year, month=current_date.month, day=current_date.day).timestamp()
+
+
+def validate_tutoring_dates(time_str):
+    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    time = [x.split(",") for x in time_str.split("|")]
+    return [weekdays[x[0]] for x in enumerate(time) if datetime.strptime(x[1][0], "%I:%M %p") > datetime.strptime(x[1][1], "%I:%M %p")]
 
 
 def get_response_image(image_path):
