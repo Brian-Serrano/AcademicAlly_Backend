@@ -231,12 +231,9 @@ def switch_role(current_user):
             else:
                 return jsonify({"data": {"isValid": False, "message": "You don't have courses eligible as tutor."}, "type": "success"}), 201
         else:
-            if CourseSkill.query.filter_by(user_id=current_user["id"], role="STUDENT").all():
-                user.role = "STUDENT"
-                db.session.commit()
-                return jsonify({"data": {"isValid": True, "message": "Switch role successful!"}, "type": "success"}), 201
-            else:
-                return jsonify({"data": {"isValid": False, "message": "You don't have courses eligible as student."}, "type": "success"}), 201
+            user.role = "STUDENT"
+            db.session.commit()
+            return jsonify({"data": {"isValid": True, "message": "Switch role successful!"}, "type": "success"}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Unhandled exception: {e}", "type": "error"}), 500
